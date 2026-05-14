@@ -1,0 +1,13 @@
+{
+  "name": "bello-announce-bot",
+  "version": "1.0.0",
+  "description": "Bello App announcement bot - AI generates trilingual CMS announcements",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "node-telegram-bot-api": "^0.66.0",
+    "@anthropic-ai/sdk": "^0.24.0"
+  }
+}
