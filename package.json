@@ -1,13 +1,15 @@
 {
   "name": "bello-announce-bot",
-  "version": "1.0.0",
-  "description": "Bello App announcement bot - AI generates trilingual CMS announcements",
+  "version": "2.0.0",
+  "description": "Bello App announcement bot with auto CMS publishing",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "postinstall": "npx playwright install chromium --with-deps"
   },
   "dependencies": {
     "node-telegram-bot-api": "^0.66.0",
-    "@anthropic-ai/sdk": "^0.24.0"
+    "@anthropic-ai/sdk": "^0.24.0",
+    "playwright": "^1.44.0"
   }
 }
