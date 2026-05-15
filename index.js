@@ -11,16 +11,15 @@ const weeklySessions = {};
 console.log("Bello Announce Bot v2 started...");
 
 const THEMES = [
-  { key: "qr_hunt",       label: "QR 扫码打卡" },
-  { key: "diamonds",      label: "收集 Event Diamonds" },
-  { key: "redeem",        label: "兑换奖励" },
-  { key: "explore",       label: "探索商家" },
-  { key: "streak",        label: "连续签到" },
-  { key: "diamond_rain",  label: "玩钻石雨" },
-  { key: "spend_bp",      label: "消费 Bello Points" },
-  { key: "hollow_diamond",label: "收集空头钻石奖励" },
-  { key: "new_merchant",  label: "新商家上线" },
-  { key: "leaderboard",   label: "排行榜" },
+  { key: "qr_hunt",        label: "QR 扫码打卡" },
+  { key: "diamonds",       label: "收集 Event Diamonds" },
+  { key: "redeem",         label: "兑换奖励" },
+  { key: "explore",        label: "探索商家" },
+  { key: "diamond_rain",   label: "玩钻石雨" },
+  { key: "spend_bp",       label: "消费 Bello Points" },
+  { key: "hollow_diamond", label: "收集空头钻石奖励" },
+  { key: "new_merchant",   label: "新商家上线" },
+  { key: "offline_spend",  label: "线下消费商家可获得钻石奖励" },
 ];
 
 // ─── COMMANDS ────────────────────────────────────────────────────────────────
@@ -276,12 +275,11 @@ async function generateAnnouncement(merchantInfo, type, themeKey, themeLabel) {
     diamonds:       "Encourage users to collect more Event Diamonds by visiting merchants",
     redeem:         "Encourage users to redeem their Event Diamonds in the Diamond Mall",
     explore:        "Encourage users to explore new merchants on the Bello App map",
-    streak:         "Remind users to keep their daily check-in streak going",
     diamond_rain:   "Remind users to play Diamond Rain — diamonds fall on the map, tap fast to collect them",
     spend_bp:       "Encourage users to spend their Bello Points on exciting rewards",
     hollow_diamond: "Remind users to collect hollow diamond bonuses available at merchant locations",
     new_merchant:   "Announce new merchants have joined and encourage users to visit",
-    leaderboard:    "Encourage users to climb the leaderboard by collecting more diamonds",
+    offline_spend:  "Remind users that spending at physical merchant locations earns them diamond rewards — encourage them to visit and spend",
   };
 
   let prompt;
