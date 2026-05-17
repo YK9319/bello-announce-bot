@@ -8,7 +8,7 @@ const NEW_MSG_URL = `${CMS_URL}/message-manage/message-setting/operation`;
  * Main entry — called by index.js after all 7 days approved
  * @param {Array} announcements - array of approved day objects
  */
-async function publishToCMS(announcements) {
+async function publishToCMS(announcements, onProgress) {
   const browser = await chromium.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -20,8 +20,9 @@ async function publishToCMS(announcements) {
   try {
     // ── LOGIN ──────────────────────────────────────────────────────────────
     console.log("Logging in to Bello CMS...");
-    await page.goto(LOGIN_URL, { waitUntil: "networkidle" });
+    if (onProgress) await onProgress(`🔐 正在登录 Bello CMS...`);
 
+    await page.goto(LOGIN_URL, { waitUntil: "networkidle" });
     await page.fill('input[placeholder="请输入用户名"]', process.env.CMS_USERNAME);
     await page.fill('input[placeholder="请输入密码"]', process.env.CMS_PASSWORD);
 
@@ -31,21 +32,25 @@ async function publishToCMS(announcements) {
     await page.click('button:has-text("登录")');
     await page.waitForURL(`${CMS_URL}/**`, { timeout: 15000 });
     console.log("Login successful.");
+    if (onProgress) await onProgress(`✅ 登录成功，开始发布 ${announcements.length} 条公告...`);
 
     // ── PUBLISH EACH DAY ───────────────────────────────────────────────────
     for (let i = 0; i < announcements.length; i++) {
       const ann = announcements[i];
-      console.log(`Publishing Day ${i + 1}/${announcements.length}: ${ann.dayLabel}...`);
+      const label = `Day ${i + 1}／${announcements.length}（${ann.dayLabel} · ${ann.theme}）`;
+      console.log(`Publishing ${label}...`);
+      if (onProgress) await onProgress(`⏳ 正在发布 ${label}...`);
 
       try {
         await publishOne(page, ann);
         results.push({ day: ann.dayLabel, status: "success" });
-        console.log(`✅ Day ${i + 1} published.`);
+        console.log(`✅ ${label} published.`);
+        if (onProgress) await onProgress(`✅ ${label} 发布成功！`);
       } catch (err) {
-        console.error(`❌ Day ${i + 1} failed: ${err.message}`);
+        console.error(`❌ ${label} failed: ${err.message}`);
         results.push({ day: ann.dayLabel, status: "failed", error: err.message });
-        // Take screenshot for debugging
         await page.screenshot({ path: `/tmp/error_day${i + 1}.png` });
+        if (onProgress) await onProgress(`❌ ${label} 失败：${err.message}`);
       }
 
       // Small delay between submissions
