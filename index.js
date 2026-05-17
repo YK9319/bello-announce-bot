@@ -17,7 +17,7 @@ const THEMES = [
   { key: "explore",        label: "探索商家" },
   { key: "diamond_rain",   label: "玩钻石雨" },
   { key: "spend_bp",       label: "消费 Bello Points" },
-  { key: "hollow_diamond", label: "收集空头钻石奖励" },
+  { key: "hollow_diamond", label: "收集 AirDrop 钻石奖励" },
   { key: "new_merchant",   label: "新商家上线" },
   { key: "offline_spend",  label: "线下消费商家可获得钻石奖励" },
 ];
@@ -271,38 +271,69 @@ async function handleGenerate(chatId, fromId, merchantInfo, type) {
 
 async function generateAnnouncement(merchantInfo, type, themeKey, themeLabel) {
   const themeDescriptions = {
-    qr_hunt:        "Remind users to scan QR codes at merchants to collect Event Diamonds",
-    diamonds:       "Encourage users to collect more Event Diamonds by visiting merchants",
-    redeem:         "Encourage users to redeem their Event Diamonds in the Diamond Mall",
-    explore:        "Encourage users to explore new merchants on the Bello App map",
-    diamond_rain:   "Remind users to play Diamond Rain — diamonds fall on the map, tap fast to collect them",
-    spend_bp:       "Encourage users to spend their Bello Points on exciting rewards",
-    hollow_diamond: "Remind users to collect hollow diamond bonuses available at merchant locations",
-    new_merchant:   "Announce new merchants have joined and encourage users to visit",
-    offline_spend:  "Remind users that spending at physical merchant locations earns them diamond rewards — encourage them to visit and spend",
+    qr_hunt:        "Remind users to visit merchants and scan QR codes to collect Event Diamonds (活动钻石)",
+    diamonds:       "Encourage users to collect more Event Diamonds (活动钻石) by exploring and visiting merchants on the map",
+    redeem:         "Encourage users to visit the Diamond Mall (钻石商城) and redeem their Event Diamonds for rewards, or browse Hot Deals for promotion vouchers",
+    explore:        "Encourage users to explore the city map in Bello App to discover merchant locations near them",
+    diamond_rain:   "Remind users to play Diamond Rain (钻石雨) — diamonds fall on the map and users must tap fast to collect them",
+    spend_bp:       "Encourage users to use their Bello Points (消费积分) to purchase Hot Deals vouchers including massage, fitness, beauty, beverages, electronics and more in the Diamond Mall",
+    hollow_diamond: "Remind users to claim their AirDrop Diamonds (AirDrop钻石) — special diamonds users can claim through the app",
+    new_merchant:   "Announce that new merchants have recently joined Bello App and encourage users to visit them to scan QR codes and earn Event Diamonds",
+    offline_spend:  "Remind users that spending at physical Bello merchant locations earns them diamond rewards on top of their normal purchase",
   };
+
+  // ── BRAND KNOWLEDGE BASE (injected into every prompt) ──────────────────
+  const brandKnowledge = `
+ABOUT BELLO APP:
+Bello App is Malaysia's first treasure-hunting lifestyle rewards app. Users explore a city map, visit merchant locations, and collect diamonds to redeem rewards.
+
+WHAT USERS CAN DO (publicly known features):
+1. Explore merchant locations on the in-app city map
+2. Scan QR codes at merchants to collect Event Diamonds
+3. Spend at physical merchant locations to earn diamond rewards
+4. Play Diamond Rain — diamonds fall on the map, users tap fast to collect them
+5. Collect AirDrop Diamonds — special diamonds that appear and can be claimed by users
+6. Redeem Event Diamonds in the Diamond Mall for rewards
+7. Use Bello Points (消费积分) for purchases and rewards
+8. Browse Hot Deals in the Diamond Mall — buy promotion vouchers including massage, packages, fitness, electronics, beverages, experience classes, beauty deals
+9. Invite friends to Bello App — both the inviter and invitee receive diamond rewards (do NOT reveal specific amounts, just say both parties benefit)
+
+TERMINOLOGY (strictly follow these):
+- "Event Diamonds" → Chinese: "活动钻石" | BM: "Berlian Aktiviti"
+- "Diamond Mall" → Chinese: "钻石商城" | BM: "Diamond Mall"
+- "Bello Points" → Chinese: "消费积分" | BM: "Bello Points"
+- "AirDrop Diamonds" → Chinese: "AirDrop钻石" | BM: "Berlian AirDrop" (NEVER say "hollow diamond" or "空头钻石")
+- "Hot Deals" → Chinese: "超值优惠" | BM: "Tawaran Terbaik"
+- "Diamond Rain" → Chinese: "钻石雨" | BM: "Hujan Berlian"
+
+DO NOT mention:
+- Specific diamond amounts for any reward or invite
+- Internal mechanics, backend configs, or rate calculations
+- Features not yet launched (task system, leaderboard, daily streak)
+- Any internal business terms or partner details
+`;
 
   let prompt;
   if (type === "new_merchant") {
-    prompt = `You are a content creator for Bello App — Malaysia's first treasure-hunting app where users scan QR codes at merchant locations to collect Event Diamonds (ED) and redeem rewards.
-
+    prompt = `You are a content creator for Bello App.
+${brandKnowledge}
 A NEW MERCHANT has joined Bello App: ${merchantInfo}
 
-Generate a CMS announcement in THREE languages.
-Each: title (max 8 words), body (1-2 sentences, mention scanning QR + collecting Event Diamonds).
+Generate a CMS announcement in THREE languages (English, Bahasa Malaysia, Simplified Chinese).
+Each version: title (max 8 words), body (1-2 sentences, encourage users to visit and scan QR code to collect Event Diamonds).
 Malaysian casual tone. No hashtags.
 
 Respond ONLY valid JSON, no markdown fences:
 {"en":{"title":"...","body":"..."},"bm":{"title":"...","body":"..."},"zh":{"title":"...","body":"..."}}`;
   } else {
     const themeDesc = themeKey ? (themeDescriptions[themeKey] || themeLabel) : "Remind users to open Bello App and collect Event Diamonds today";
-    prompt = `You are a content creator for Bello App — Malaysia's first treasure-hunting app where users scan QR codes at merchants to collect Event Diamonds (ED) and redeem rewards in the Diamond Mall.
+    prompt = `You are a content creator for Bello App.
+${brandKnowledge}
+Today's announcement theme: ${themeDesc}
 
-Theme: ${themeDesc}
-
-Generate a daily reminder in English, Bahasa Malaysia, and Chinese (Simplified, casual Malaysian).
-Each: title (max 8 words), body (1-2 sentences, under 50 words, engaging).
-Malaysian casual tone — "lah", "weh", "jom" where natural. Use "Bello Points" not "BP". No hashtags.
+Generate a daily user reminder in THREE languages (English, Bahasa Malaysia, Simplified Chinese).
+Each version: title (max 8 words), body (1-2 sentences, under 50 words, engaging and relevant to the theme).
+Malaysian casual tone — use "lah", "weh", "jom" where natural. No hashtags.
 
 Respond ONLY valid JSON, no markdown fences:
 {"en":{"title":"...","body":"..."},"bm":{"title":"...","body":"..."},"zh":{"title":"...","body":"..."}}`;
