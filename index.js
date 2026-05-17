@@ -7,6 +7,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const pending = {};
 const weeklySessions = {};
+const editingSessions = {}; // stores pending edit requests
 
 console.log("Bello Announce Bot v2 started...");
 
@@ -17,7 +18,7 @@ const THEMES = [
   { key: "explore",        label: "探索商家" },
   { key: "diamond_rain",   label: "玩钻石雨" },
   { key: "spend_bp",       label: "消费 Bello Points" },
-  { key: "hollow_diamond", label: "收集 AirDrop 钻石奖励" },
+  { key: "airdrop",        label: "去 AirDrop 地点领钻石" },
   { key: "new_merchant",   label: "新商家上线" },
   { key: "offline_spend",  label: "线下消费商家可获得钻石奖励" },
 ];
@@ -29,6 +30,61 @@ bot.on("message", async (msg) => {
   const text = msg.text || "";
   const fromId = msg.from.id;
   if (msg.from.is_bot) return;
+
+  // Handle edit requests
+  if (editingSessions[`${chatId}`]) {
+    const session = editingSessions[`${chatId}`];
+    delete editingSessions[`${chatId}`];
+    const ann = pending[session.id];
+    if (!ann) {
+      await bot.sendMessage(chatId, "❌ 已过期，请重新生成。");
+      return;
+    }
+    const loadingMsg = await bot.sendMessage(chatId, "✏️ 正在修改文案...");
+    try {
+      const revised = await reviseAnnouncement(ann, text);
+      pending[session.id] = { ...ann, ...revised };
+      const updatedAnn = pending[session.id];
+
+      if (session.type === "weekly") {
+        const dayIndex = updatedAnn.dayIndex;
+        const totalDays = 7;
+        await bot.editMessageText(
+          `📣 *Day ${dayIndex + 1}／${totalDays} — ${updatedAnn.dayLabel}*\n主题：${updatedAnn.theme}\n✏️ _已按要求修改_\n\n` +
+          `*[EN]*\n📌 ${revised.en.title}\n${revised.en.body}\n\n` +
+          `*[BM]*\n📌 ${revised.bm.title}\n${revised.bm.body}\n\n` +
+          `*[中文]*\n📌 ${revised.zh.title}\n${revised.zh.body}\n\n` +
+          `─────────────\n审核此条：`,
+          {
+            chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: "Markdown",
+            reply_markup: { inline_keyboard: [[
+              { text: "✅ 批准", callback_data: `wapprove_${session.id}` },
+              { text: "✏️ 修改", callback_data: `wedit_${session.id}` },
+              { text: "🔄 重新生成", callback_data: `wregen_${session.id}` },
+            ]]},
+          }
+        );
+      } else {
+        await bot.editMessageText(
+          `📣 *文案草稿*\n✏️ _已按要求修改_\n\n` +
+          `*[EN]*\n📌 ${revised.en.title}\n${revised.en.body}\n\n` +
+          `*[BM]*\n📌 ${revised.bm.title}\n${revised.bm.body}\n\n` +
+          `*[中文]*\n📌 ${revised.zh.title}\n${revised.zh.body}\n\n─────────────\n请审核：`,
+          {
+            chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: "Markdown",
+            reply_markup: { inline_keyboard: [[
+              { text: "✅ 批准", callback_data: `approve_${session.id}` },
+              { text: "✏️ 修改", callback_data: `edit_${session.id}` },
+              { text: "❌ 拒绝", callback_data: `reject_${session.id}` },
+            ]]},
+          }
+        );
+      }
+    } catch (err) {
+      await bot.editMessageText(`❌ 修改失败：${err.message}`, { chat_id: chatId, message_id: loadingMsg.message_id });
+    }
+    return;
+  }
 
   if (text.startsWith("/generate ")) {
     await handleGenerate(chatId, fromId, text.replace("/generate ", "").trim(), "new_merchant");
@@ -104,6 +160,7 @@ async function generateWeeklyDay(chatId, sessionKey, dayIndex) {
         parse_mode: "Markdown",
         reply_markup: { inline_keyboard: [[
           { text: "✅ 批准", callback_data: `wapprove_${id}` },
+          { text: "✏️ 修改", callback_data: `wedit_${id}` },
           { text: "🔄 重新生成", callback_data: `wregen_${id}` },
         ]]},
       }
@@ -188,7 +245,10 @@ bot.on("callback_query", async (query) => {
     );
 
     // Run Playwright in background
-    publishToCMS(session.approved)
+    const onProgress = async (msg) => {
+      await bot.sendMessage(chatId, msg);
+    };
+    publishToCMS(session.approved, onProgress)
       .then(async (results) => {
         const success = results.filter(r => r.status === "success").length;
         const failed = results.filter(r => r.status === "failed");
@@ -211,6 +271,34 @@ bot.on("callback_query", async (query) => {
           { parse_mode: "Markdown" }
         );
       });
+    return;
+  }
+
+  // Weekly: edit
+  if (data.startsWith("wedit_")) {
+    const id = data.replace("wedit_", "");
+    const ann = pending[id];
+    if (!ann) { await bot.answerCallbackQuery(query.id, { text: "已过期" }); return; }
+    editingSessions[`${chatId}`] = { id, type: "weekly" };
+    await bot.answerCallbackQuery(query.id);
+    await bot.sendMessage(chatId,
+      `✏️ *请输入修改要求*\n\n例："把中文标题改得更活泼" 或 "英文内容加一句关于Hot Deals的" 或 "全部重写但保留主题"`,
+      { parse_mode: "Markdown", reply_markup: { force_reply: true } }
+    );
+    return;
+  }
+
+  // Single: edit
+  if (data.startsWith("edit_")) {
+    const id = data.replace("edit_", "");
+    const ann = pending[id];
+    if (!ann) { await bot.answerCallbackQuery(query.id, { text: "已过期" }); return; }
+    editingSessions[`${chatId}`] = { id, type: "single" };
+    await bot.answerCallbackQuery(query.id);
+    await bot.sendMessage(chatId,
+      `✏️ *请输入修改要求*\n\n例："把中文标题改得更活泼" 或 "英文内容加一句关于Hot Deals的" 或 "全部重写但保留主题"`,
+      { parse_mode: "Markdown", reply_markup: { force_reply: true } }
+    );
     return;
   }
 
@@ -258,6 +346,7 @@ async function handleGenerate(chatId, fromId, merchantInfo, type) {
         chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: "Markdown",
         reply_markup: { inline_keyboard: [[
           { text: "✅ 批准", callback_data: `approve_${id}` },
+          { text: "✏️ 修改", callback_data: `edit_${id}` },
           { text: "❌ 拒绝", callback_data: `reject_${id}` },
         ]]},
       }
@@ -277,7 +366,7 @@ async function generateAnnouncement(merchantInfo, type, themeKey, themeLabel) {
     explore:        "Encourage users to explore the city map in Bello App to discover merchant locations near them",
     diamond_rain:   "Remind users to play Diamond Rain (钻石雨) — diamonds fall on the map and users must tap fast to collect them",
     spend_bp:       "Encourage users to use their Bello Points (消费积分) to purchase Hot Deals vouchers including massage, fitness, beauty, beverages, electronics and more in the Diamond Mall",
-    hollow_diamond: "Remind users to claim their AirDrop Diamonds (AirDrop钻石) — special diamonds users can claim through the app",
+    airdrop:        "Remind users about AirDrop spots on the Bello App map — these are special location spots where users who physically enter the effective range will earn diamond rewards. Encourage them to go find AirDrop spots near them.",
     new_merchant:   "Announce that new merchants have recently joined Bello App and encourage users to visit them to scan QR codes and earn Event Diamonds",
     offline_spend:  "Remind users that spending at physical Bello merchant locations earns them diamond rewards on top of their normal purchase",
   };
@@ -297,12 +386,13 @@ WHAT USERS CAN DO (publicly known features):
 7. Use Bello Points (消费积分) for purchases and rewards
 8. Browse Hot Deals in the Diamond Mall — buy promotion vouchers including massage, packages, fitness, electronics, beverages, experience classes, beauty deals
 9. Invite friends to Bello App — both the inviter and invitee receive diamond rewards (do NOT reveal specific amounts, just say both parties benefit)
+10. AirDrop — special location spots on the Bello App map; users who physically enter the AirDrop's effective range will receive diamond rewards. NOT a type of diamond — it's a location. Encourage users to find and visit AirDrop spots.
 
 TERMINOLOGY (strictly follow these):
 - "Event Diamonds" → Chinese: "活动钻石" | BM: "Berlian Aktiviti"
 - "Diamond Mall" → Chinese: "钻石商城" | BM: "Diamond Mall"
 - "Bello Points" → Chinese: "消费积分" | BM: "Bello Points"
-- "AirDrop Diamonds" → Chinese: "AirDrop钻石" | BM: "Berlian AirDrop" (NEVER say "hollow diamond" or "空头钻石")
+- "AirDrop" → same in all 3 languages: "AirDrop" (it is a special map location spot, NOT a type of diamond. Users visit AirDrop spots to earn diamonds. NEVER say "AirDrop diamond", "AirDrop钻石", "hollow diamond", or "空头钻石")
 - "Hot Deals" → Chinese: "超值优惠" | BM: "Tawaran Terbaik"
 - "Diamond Rain" → Chinese: "钻石雨" | BM: "Hujan Berlian"
 
@@ -349,6 +439,45 @@ Respond ONLY valid JSON, no markdown fences:
   return JSON.parse(text.replace(/```json|```/g, "").trim());
 }
 
+
+// ─── REVISE ANNOUNCEMENT ─────────────────────────────────────────────────────
+
+async function reviseAnnouncement(original, userRequest) {
+  const prompt = `You are a content creator for Bello App. The user wants to revise the following announcement.
+
+CURRENT ANNOUNCEMENT:
+[EN] Title: ${original.en.title}
+[EN] Body: ${original.en.body}
+
+[BM] Title: ${original.bm.title}
+[BM] Body: ${original.bm.body}
+
+[中文] Title: ${original.zh.title}
+[中文] Body: ${original.zh.body}
+
+USER'S REVISION REQUEST: ${userRequest}
+
+Please revise according to the request. Keep what's not mentioned unchanged.
+Rules:
+- Use relevant emojis to keep it lively (💎🗺️📍🎁✨🔥👣🛍️)
+- Title: max 20 characters, punchy
+- Body: must NOT repeat the same idea as the title — complement or expand with a call-to-action
+- Malaysian casual tone — "lah", "weh", "jom" where natural
+- Bello App terminology: Event Diamonds=活动钻石, Diamond Mall=钻石商城, Bello Points=消费积分, AirDrop=AirDrop (a map location spot, NOT a diamond type)
+- NEVER say "hollow diamond", "空头钻石", "AirDrop diamond", or "AirDrop钻石"
+
+Respond ONLY valid JSON, no markdown fences:
+{"en":{"title":"...","body":"..."},"bm":{"title":"...","body":"..."},"zh":{"title":"...","body":"..."}}`;
+
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 1000,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const text = response.content.map((b) => b.text || "").join("");
+  return JSON.parse(text.replace(/```json|```/g, "").trim());
+}
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
 function formatDate(date) {
